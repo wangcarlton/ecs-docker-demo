@@ -1,0 +1,37 @@
+version: 0.2
+
+phases:
+  pre_build:
+    commands:
+      - echo Logging in to Amazon ECR...
+      - aws --version
+      - $(aws ecr get-login --region $AWS_DEFAULT_REGION --no-include-email)
+      # Image URI of ECR repository, don't add tag to this uri
+      - REPOSITORY_URI=ACCOUNT_ID.dkr.ecr.ap-southeast-2.amazonaws.com/RepositoryName
+      - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
+      - IMAGE_TAG=build-$(echo $CODEBUILD_BUILD_ID | awk -F":" '{print $2}')
+      - npm install 
+      # followling lines verify through codebuild logs that all needed files/folders are successfully generated
+      - echo Current directory
+      - ls -lrt 
+      - echo list node_modules folder
+      - find ./node_modules -type d
+  build: 
+    commands:
+      - echo Build started on `date`
+      - echo Building the Docker image...
+      - docker build -t $REPOSITORY_URI:latest .
+      - docker tag $REPOSITORY_URI:latest $REPOSITORY_URI:$IMAGE_TAG
+  post_build: 
+    commands: 
+      - echo Build completed on `date`
+      - echo Pushing the Docker images...
+      - docker push $REPOSITORY_URI:latest
+      - docker push $REPOSITORY_URI:$IMAGE_TAG
+      # - printf '[{"ImageURI":"%s"}]' $REPOSITORY_URI:$IMAGE_TAG > imageDetail.json
+      # the name should be exactly the same name as container name in your taskdefinitions. Task Definitions->Container Definitions->Container Name
+      # artifact imagedefinitions.json is used for codedeploy to fetch a tagged image
+      - printf '[{"name":"hello-world-container","imageUri":"%s"}]' $REPOSITORY_URI:$IMAGE_TAG > imagedefinitions.json
+artifacts:
+  files:
+    - imagedefinitions.json
